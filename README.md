@@ -1,9 +1,9 @@
 # wiffle
 
-wiffle finds the language of a topic in a collection of texts. It labels the texts in which one of a few seed
-phrases occurs, masks the seeds and trains two linear classifiers on these labels. It then writes the subwords,
-word families and formulas of the topic, and ranks all texts by how much they look like it, also the texts that
-hold no seed.
+wiffle finds the language that sets a group of texts apart from other texts. It labels the texts in which one of a
+few seed phrases occurs, masks the seeds and trains two linear classifiers on these labels. It then writes the
+subwords, word families and formulas that weigh most for the labelled texts, and ranks all texts by how much they
+read like them, also the texts that hold no seed.
 
 ## Install
 
@@ -97,8 +97,8 @@ them in most labelled texts are merged into one span.
 - `pieces`: the subwords of the span, strongest first.
 - `examples`: up to three words that hold the strongest piece, most labelled texts first.
 
-`texts.tsv` holds every text, ranked by the score of the ranking fit. The texts without a seed that rank high
-are the candidates for the topic.
+`texts.tsv` holds every text, ranked by the score of the ranking fit. The texts without a seed that rank high read
+like the labelled texts.
 
 - `rank`, `id`, `score`: the score is the decision value of the ranking fit.
 - `labelled`: 1 when a seed labels the text, else 0.

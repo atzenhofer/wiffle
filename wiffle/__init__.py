@@ -1,1 +1,1 @@
-"""wiffle: the subwords, word families, formulas and texts of a topic, learned from a few seed phrases."""
+"""wiffle: the language that sets texts with a few seed phrases apart from other texts."""
