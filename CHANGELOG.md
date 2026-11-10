@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `wiffle.web.run`: a run on texts and seeds given as JSON, for a browser worker under Pyodide. It writes the results
+  as one ZIP with the TSV files and `run.json`, and the tables as JSON.
+
 ## 0.1.0
 
 ### Added
