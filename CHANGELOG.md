@@ -9,4 +9,5 @@
   on character n-grams inside words; the other names the formulas, on word n-grams and phrase frames with one open
   word. Writes the formulas, word families, subwords, all texts ranked by score with the words behind each score,
   concordance lines and a run record.
-- Parquet input with the columns `id`, `text` and optionally `abstract`.
+- Input as Parquet, CSV or TSV, read by the file suffix. `--id-column`, `--text-column` and `--abstract-column`
+  name the columns; the defaults are `id`, `text` and `abstract`.

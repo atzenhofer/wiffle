@@ -18,19 +18,38 @@ from .labels import Seeds, concordance
 FIELDS = {"text": ("text",), "abstract": ("abstract",), "both": ("text", "abstract")}
 CONCORDANCE_FORMULAS = 50
 CONCORDANCE_LINES = 3
+DELIMITERS = {".csv": ",", ".tsv": "\t"}
+LONGEST_FIELD = 2**31 - 1
 
 
-def read_records(path: Path) -> list[dict]:
-    """Records with at least `id` and `text`, from a Parquet file."""
-    try:
-        import pyarrow.parquet as parquet
-    except ImportError as error:
-        raise SystemExit("reading Parquet needs pyarrow: install wiffle[parquet]") from error
-    table = parquet.read_table(path)
-    missing = [name for name in ("id", "text") if name not in table.column_names]
+def read_table(path: Path) -> tuple[list[str], list[dict]]:
+    """The column names and the rows of a Parquet, CSV or TSV file, read by its suffix."""
+    suffix = path.suffix.lower()
+    if suffix == ".parquet":
+        try:
+            import pyarrow.parquet as parquet
+        except ImportError as error:
+            raise SystemExit("reading Parquet needs pyarrow: install wiffle[parquet]") from error
+        table = parquet.read_table(path)
+        return table.column_names, table.to_pylist()
+    if suffix not in DELIMITERS:
+        raise SystemExit(f"{path}: the input must end in .parquet, .csv or .tsv")
+    # csv refuses fields longer than 131,072 characters by default
+    csv.field_size_limit(LONGEST_FIELD)
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream, delimiter=DELIMITERS[suffix])
+        rows = list(reader)
+        return list(reader.fieldnames or ()), rows
+
+
+def read_records(path: Path, id_column: str, text_column: str, abstract_column: str) -> list[dict]:
+    """Records with `id`, `text` and `abstract` from the named columns, and `year` and `url` if the input has them."""
+    names, rows = read_table(path)
+    missing = [name for name in (id_column, text_column) if name not in names]
     if missing:
-        raise SystemExit(f"{path}: no column {' or '.join(missing)}")
-    return table.to_pylist()
+        raise SystemExit(f"{path}: no column {' or '.join(missing)}; the columns are {', '.join(names)}")
+    return [{"id": row[id_column], "text": row[text_column], "abstract": row.get(abstract_column),
+             "year": row.get("year"), "url": row.get("url")} for row in rows]
 
 
 def seed_labels(records: list[dict], seeds: Seeds, fields: tuple[str, ...]) -> np.ndarray:
@@ -49,7 +68,7 @@ def file_digest(path: Path) -> str:
 
 def count(arguments: argparse.Namespace) -> None:
     """Print how many records the seeds select, by field."""
-    records = read_records(arguments.data)
+    records = read_records(arguments.data, arguments.id_column, arguments.text_column, arguments.abstract_column)
     seeds = Seeds.read(arguments.seeds)
     lowered = {name: [(record.get(name) or "").lower() for record in records] for name in FIELDS["both"]}
     print(f"records\t{len(records)}")
@@ -141,7 +160,7 @@ def options_from(arguments: argparse.Namespace, **fixed) -> Options:
 
 def find_command(arguments: argparse.Namespace) -> None:
     """Run find and write its results and run.json into the output folder."""
-    records = read_records(arguments.data)
+    records = read_records(arguments.data, arguments.id_column, arguments.text_column, arguments.abstract_column)
     seeds = Seeds.read(arguments.seeds)
     labels = seed_labels(records, seeds, FIELDS[arguments.label_from])
     options = options_from(arguments, refits=arguments.refits, top=arguments.top)
@@ -153,6 +172,7 @@ def find_command(arguments: argparse.Namespace) -> None:
         "version": version("wiffle"),
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "data": {"path": str(arguments.data), "sha256": file_digest(arguments.data)},
+        "columns": {"id": arguments.id_column, "text": arguments.text_column, "abstract": arguments.abstract_column},
         "seeds": list(seeds.phrases),
         "label_from": arguments.label_from,
         "options": asdict(options),
@@ -165,21 +185,30 @@ def find_command(arguments: argparse.Namespace) -> None:
           f"results in {arguments.out}", file=sys.stderr)
 
 
+def add_input_options(command: argparse.ArgumentParser) -> None:
+    """The input file, its columns and the seeds file as command-line arguments."""
+    command.add_argument("data", type=Path, help="Parquet, CSV or TSV file, read by its suffix")
+    command.add_argument("--seeds", type=Path, required=True, help="one seed phrase per line")
+    command.add_argument("--id-column", default="id", help="column of the text ids")
+    command.add_argument("--text-column", default="text", help="column of the texts")
+    command.add_argument("--abstract-column", default="abstract",
+                         help="column of a second text such as an abstract, if the input has one")
+
+
 def parser() -> argparse.ArgumentParser:
     """The command line of wiffle with its two commands."""
     command = argparse.ArgumentParser(prog="wiffle", description=__doc__)
     commands = command.add_subparsers(dest="command", required=True)
 
     counting = commands.add_parser("count", help="how many records the seeds select")
-    counting.add_argument("data", type=Path, help="Parquet file with id, text and optionally abstract")
-    counting.add_argument("--seeds", type=Path, required=True, help="one seed phrase per line")
+    add_input_options(counting)
     counting.set_defaults(handler=count)
 
     finding = commands.add_parser("find", help="formulas and texts of the class the seeds select")
-    finding.add_argument("data", type=Path, help="Parquet file with id, text and optionally abstract")
-    finding.add_argument("--seeds", type=Path, required=True, help="one seed phrase per line")
+    add_input_options(finding)
     finding.add_argument("--out", type=Path, required=True, help="folder for the results")
-    finding.add_argument("--label-from", choices=FIELDS, default="both", help="where a seed labels a text")
+    finding.add_argument("--label-from", choices=FIELDS, default="both",
+                         help="where a seed labels a text: the text column, the abstract column or both")
     add_run_options(finding)
     defaults = Options()
     finding.add_argument("--refits", type=int, default=defaults.refits, help="refits on subsamples for stability")
