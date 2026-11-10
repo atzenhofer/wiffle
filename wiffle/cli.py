@@ -43,13 +43,14 @@ def read_table(path: Path) -> tuple[list[str], list[dict]]:
 
 
 def read_records(path: Path, id_column: str, text_column: str, abstract_column: str) -> list[dict]:
-    """Records with `id`, `text` and `abstract` from the named columns, and `year` and `url` if the input has them."""
+    """Records with `id`, `text` and `abstract` from the named columns, and `year`, `url` and `source` if the input has
+    them."""
     names, rows = read_table(path)
     missing = [name for name in (id_column, text_column) if name not in names]
     if missing:
         raise SystemExit(f"{path}: no column {' or '.join(missing)}; the columns are {', '.join(names)}")
     return [{"id": row[id_column], "text": row[text_column], "abstract": row.get(abstract_column),
-             "year": row.get("year"), "url": row.get("url")} for row in rows]
+             "year": row.get("year"), "url": row.get("url"), "source": row.get("source")} for row in rows]
 
 
 def seed_labels(records: list[dict], seeds: Seeds, fields: tuple[str, ...]) -> np.ndarray:
@@ -106,9 +107,10 @@ def write_results(out: Path, records: list[dict], result: Result) -> None:
                for rank, subword in enumerate(result.subwords, 1)))
 
     order = np.argsort(-result.scores)
-    write_tsv(out / "texts.tsv", ["rank", "id", "score", "labelled", "year", "url", "reasons"],
+    write_tsv(out / "texts.tsv", ["rank", "id", "score", "labelled", "year", "url", "source", "reasons"],
               ([rank, records[row]["id"], f"{result.scores[row]:.4f}", int(result.labels[row]),
-                records[row].get("year") or "", records[row].get("url") or "", " | ".join(result.reasons(row))]
+                records[row].get("year") or "", records[row].get("url") or "", records[row].get("source") or "",
+                " | ".join(result.reasons(row))]
                for rank, row in enumerate(order, 1)))
 
     rank_of = np.empty(len(order), dtype=np.int64)

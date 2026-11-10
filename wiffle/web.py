@@ -7,6 +7,8 @@ from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
 
+import numpy as np
+
 from .cli import FIELDS, seed_labels, write_results
 from .find import Options, find
 from .labels import Seeds
@@ -29,26 +31,40 @@ def _rows(path: Path) -> list[list[str]]:
         return list(csv.reader(stream, delimiter="\t"))
 
 
+def labels_of(records: list[dict], seeds: Seeds | None, label_from: str) -> tuple[np.ndarray, str]:
+    """The labels given with the texts, else the labels the seeds give in the fields of label_from; and their origin."""
+    given = [record.get("labelled") for record in records]
+    if all(value is not None for value in given):
+        return np.array(given, dtype=bool), "given"
+    if any(value is not None for value in given):
+        raise ValueError("labels are given for some texts and not for others")
+    if seeds is None:
+        raise ValueError("a run without labels given needs seeds")
+    return seed_labels(records, seeds, FIELDS[label_from]), label_from
+
+
 def run(input_json: str, options_json: str, directory: str) -> str:
     """Runs find on the texts of input_json in a new directory and returns, as JSON, the paths of the results ZIP and
     of the tables as JSON.
 
-    input_json holds `texts`, each with `id` and `text` and optionally `abstract`, `year` and `url`; `seeds`, the seed
-    phrases; `label_from`, which is text, abstract or both; and `record`, fields for run.json. options_json holds
-    settings of `find.Options` by name, ranges as lists."""
+    input_json holds `texts`, each with `id` and `text` and optionally `abstract`, `year`, `url`, `source` and
+    `labelled`; `seeds`, the seed phrases; `label_from`, which is text, abstract or both; and `record`, fields for
+    run.json. When every text has `labelled`, these are the labels and the seeds, which may be none, are only masked;
+    else a seed labels a text where it occurs in the fields of `label_from`. options_json holds settings of
+    `find.Options` by name, ranges as lists."""
     given = json.loads(input_json)
     settings = json.loads(options_json)
     options = Options(**{name: tuple(value) if isinstance(value, list) else value for name, value in settings.items()})
     records = given["texts"]
-    seeds = Seeds.of(given["seeds"])
-    label_from = given.get("label_from", "both")
-    labels = seed_labels(records, seeds, FIELDS[label_from])
+    phrases = given.get("seeds") or []
+    seeds = Seeds.of(phrases) if any(phrase.strip() for phrase in phrases) else None
+    labels, label_from = labels_of(records, seeds, given.get("label_from", "both"))
     result = find([record["text"] or "" for record in records], labels, seeds, options)
 
     out = Path(directory)
     out.mkdir(parents=True)
     write_results(out, records, result)
-    record = {**given.get("record", {}), "version": version("wiffle"), "seeds": list(seeds.phrases),
+    record = {**given.get("record", {}), "version": version("wiffle"), "seeds": list(seeds.phrases) if seeds else [],
               "label_from": label_from, "options": asdict(options), "counts": result.counts,
               "seconds": {key: round(value, 2) for key, value in result.seconds.items()},
               "memory_bytes": _memory_bytes()}

@@ -35,7 +35,8 @@ these columns:
 - `text`: the text (`--text-column`). The classifiers learn from this column only.
 - `abstract`: an optional second text, such as an abstract or a summary (`--abstract-column`). `--label-from`
   says where a seed labels a text: in `text`, in `abstract` or in `both` (the default).
-- `year` and `url`: optional, copied to `texts.tsv`.
+- `year`, `url` and `source`: optional, copied to `texts.tsv`; `source` says where the text comes from, such as an
+  edition or a machine reading.
 
 The seeds file is UTF-8 text with one seed phrase per line. Empty lines and lines that start with `#` are skipped.
 A seed matches anywhere in the lowercased text, also inside a word: the seed `leak` matches `Leaking`.
@@ -101,7 +102,7 @@ are the candidates for the topic.
 
 - `rank`, `id`, `score`: the score is the decision value of the ranking fit.
 - `labelled`: 1 when a seed labels the text, else 0.
-- `year`, `url`: from the input, when it has these columns.
+- `year`, `url`, `source`: from the input, when it has these columns.
 - `reasons`: up to three words of the text that raise its score most.
 
 `concordance.tsv` holds context lines for the 50 strongest formulas: up to three from labelled texts and three
@@ -150,12 +151,12 @@ $ wiffle find letters.csv --seeds seeds.txt --out results --formula-min-labelled
 in one other. In `results/texts.tsv`, text 4 holds no seed and ranks right after the three labelled texts:
 
 ```
-rank  id  score    labelled  year  url  reasons
-1     3    3.8533  1                    ceiling | through | water
-2     2    3.6293  1                    ceiling | through | water
-3     1    3.0739  1                    ceiling | through | water
-4     4    2.7761  0                    ceiling | through | water
-5     8   -0.8542  0                    time | was
+rank  id  score    labelled  year  url  source  reasons
+1     3    3.8533  1                            ceiling | through | water
+2     2    3.6293  1                            ceiling | through | water
+3     1    3.0739  1                            ceiling | through | water
+4     4    2.7761  0                            ceiling | through | water
+5     8   -0.8542  0                            time | was
 ```
 
 ## License
