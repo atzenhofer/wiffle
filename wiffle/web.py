@@ -47,8 +47,8 @@ def run(input_json: str, options_json: str, directory: str) -> str:
     """Runs find on the texts of input_json in a new directory and returns, as JSON, the paths of the results ZIP and
     of the tables as JSON.
 
-    input_json holds `texts`, each with `id` and `text` and optionally `abstract`, `year`, `url`, `source` and
-    `labelled`; `seeds`, the seed phrases; `label_from`, which is text, abstract or both; and `record`, fields for
+    input_json holds `texts`, each with `id` and `text` and optionally `abstract`, `name`, `year`, `url`, `source`
+    and `labelled`; `seeds`, the seed phrases; `label_from`, which is text, abstract or both; and `record`, fields for
     run.json. When every text has `labelled`, these are the labels and the seeds, which may be none, are only masked;
     else a seed labels a text where it occurs in the fields of `label_from`. options_json holds settings of
     `find.Options` by name, ranges as lists."""

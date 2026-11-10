@@ -7,7 +7,7 @@
 - `wiffle.web.run`: a run on texts given as JSON, for a browser worker under Pyodide. The labels come from the seeds,
   or are given with each text, and then the seeds, which may be none, are only masked. It writes the results as one
   ZIP with the TSV files and `run.json`, and the tables as JSON.
-- `texts.tsv` holds the `source` of each text, where the input has a `source` column.
+- `texts.tsv` holds the `name` and the `source` of each text, where the input has these columns.
 
 ### Fixed
 

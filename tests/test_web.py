@@ -29,8 +29,8 @@ def test_run_writes_one_zip_with_the_tables_and_the_record(tmp_path):
 
 def test_run_takes_the_labels_given_and_only_masks_the_seeds(tmp_path):
     bodies = LABELLED + UNSEEDED + OTHERS
-    texts = [{"id": f"t{position}", "text": text, "labelled": position < 16, "source": "edited" if position % 2 else ""}
-             for position, text in enumerate(bodies)]
+    texts = [{"id": f"t{position}", "text": text, "labelled": position < 16, "source": "edited" if position % 2 else "",
+              "name": f"Letter {position}"} for position, text in enumerate(bodies)]
     given = {"texts": texts, "seeds": ["leak"], "record": {}}
     paths = json.loads(web.run(json.dumps(given), json.dumps({"refits": 2}), str(tmp_path / "run")))
     with zipfile.ZipFile(paths["archive"]) as zipped:
@@ -40,7 +40,8 @@ def test_run_takes_the_labels_given_and_only_masks_the_seeds(tmp_path):
     assert not any("leak" in cell for row in tables["formulas"][1:] for cell in row)
     header, *rows = tables["texts"]
     source = {row[header.index("id")]: row[header.index("source")] for row in rows}
-    assert source["t1"] == "edited" and source["t2"] == ""
+    name = {row[header.index("id")]: row[header.index("name")] for row in rows}
+    assert source["t1"] == "edited" and source["t2"] == "" and name["t2"] == "Letter 2"
 
 
 def test_run_takes_the_labels_given_without_seeds(tmp_path):
