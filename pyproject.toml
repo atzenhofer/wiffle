@@ -2,6 +2,7 @@
 name = "wiffle"
 version = "0.1.0.dev0"
 description = "The subwords, word families, formulas and texts of a topic, learned from a few seed phrases"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
