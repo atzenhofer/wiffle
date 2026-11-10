@@ -7,6 +7,11 @@
 - `wiffle.web.run`: a run on texts and seeds given as JSON, for a browser worker under Pyodide. It writes the results
   as one ZIP with the TSV files and `run.json`, and the tables as JSON.
 
+### Fixed
+
+- `wiffle find` on platforms with 32-bit array indices, WebAssembly among them, where it stopped with a TypeError
+  in `numpy.repeat`.
+
 ## 0.1.0
 
 ### Added

@@ -88,7 +88,7 @@ def build(streams: list[list[str]], patterns: list[Pattern], min_df: int, blocke
     """
     vocabulary: dict[str, int] = {}
     per_text = [[vocabulary.setdefault(token, len(vocabulary)) for token in stream] for stream in streams]
-    lengths = np.fromiter(map(len, per_text), dtype=np.int64, count=len(per_text))
+    lengths = np.fromiter(map(len, per_text), dtype=np.intp, count=len(per_text))
     text_starts = np.concatenate(([0], np.cumsum(lengths)))
     token_ids = np.fromiter(chain.from_iterable(per_text), dtype=np.uint64, count=int(text_starts[-1]))
     text_of = np.repeat(np.arange(len(per_text), dtype=np.int64), lengths)
