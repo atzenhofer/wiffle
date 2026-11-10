@@ -13,6 +13,9 @@
 
 - `wiffle find` on platforms with 32-bit array indices, WebAssembly among them, where it stopped with a TypeError
   in `numpy.repeat`.
+- A run in which no n-gram occurs in `--min-df` texts no longer stops with a ValueError: it names no formulas and
+  still ranks the texts. When no subword occurs in `--min-df` texts either, the run stops with `NoFeatures`, and
+  `wiffle find` says to lower `--min-df` or add texts.
 
 ## 0.1.0
 

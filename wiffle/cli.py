@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .find import Options, Result, find
+from .find import NoFeatures, Options, Result, find
 from .labels import Seeds, concordance
 
 FIELDS = {"text": ("text",), "abstract": ("abstract",), "both": ("text", "abstract")}
@@ -166,7 +166,10 @@ def find_command(arguments: argparse.Namespace) -> None:
     seeds = Seeds.read(arguments.seeds)
     labels = seed_labels(records, seeds, FIELDS[arguments.label_from])
     options = options_from(arguments, refits=arguments.refits, top=arguments.top)
-    result = find([record["text"] or "" for record in records], labels, seeds, options)
+    try:
+        result = find([record["text"] or "" for record in records], labels, seeds, options)
+    except NoFeatures as error:
+        raise SystemExit(f"{arguments.data}: {error}; lower --min-df or add texts") from error
     arguments.out.mkdir(parents=True, exist_ok=True)
     write_results(arguments.out, records, result)
     run = {

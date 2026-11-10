@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from wiffle.find import Options, find
 from wiffle.labels import Seeds
@@ -84,3 +85,21 @@ def test_naming_subword_prefers_four_letters_or_more():
     long_enough = np.array([False, True, True])
     assert naming_subword(columns, weights, long_enough) == 1
     assert naming_subword(np.array([0]), weights, long_enough) == 0
+
+
+def test_a_fit_without_ngrams_names_no_formula_and_still_ranks():
+    rng = np.random.default_rng(3)
+    texts = [f"arbitri {word}" for word in rng.choice(FILLER, size=12)] + list(rng.choice(FILLER, size=30))
+    labels = np.array([True] * 12 + [False] * 30)
+    result = find(texts, labels, Seeds.of(["arbitri"]), Options(min_df=2, refits=2))
+    assert result.counts["ngrams"] == 0 and result.formulas == []
+    assert len(result.scores) == len(texts)
+
+
+def test_a_fit_without_any_feature_stops_with_no_features():
+    from wiffle.find import NoFeatures
+    texts, labelled, _ = corpus()
+    with pytest.raises(NoFeatures, match="no subword occurs in 1000 texts"):
+        find(texts, labelled, Seeds.of(["arbitr"]), Options(min_df=1000))
+    with pytest.raises(NoFeatures, match="no word that is not masked"):
+        find(["arbitri", "arbitrium", "", ""], np.array([True, True, False, False]), Seeds.of(["arbitr"]))

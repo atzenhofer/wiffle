@@ -20,6 +20,10 @@ UNLABELLED_DROPPED_PER_LABEL = 2
 FAMILY_LETTERS = 4
 
 
+class NoFeatures(ValueError):
+    """The ranking fit has no feature: no subword occurs in min_df texts."""
+
+
 @dataclass(frozen=True)
 class Options:
     """Settings of one run. Ranges are (shortest, longest): characters for the ranking fit, words for the formulas."""
@@ -138,11 +142,20 @@ def selection_frequency(presence, labels: np.ndarray, options: Options) -> np.nd
     """For each column, the share of refits on subsamples in which it is among the top columns."""
     rng = np.random.default_rng(options.random_state)
     selected = np.zeros(presence.shape[1], dtype=np.float64)
+    if not presence.shape[1]:
+        return selected
     for refit in range(options.refits):
         rows = stratified_sample(labels, options.fraction, rng)
         model = classifier(options, options.random_state + refit + 1).fit(presence[rows], labels[rows])
         selected[strongest(model.coef_.ravel(), options.top)] += 1
     return selected / max(1, options.refits)
+
+
+def formula_weights_of(presence, labels: np.ndarray, options: Options) -> np.ndarray:
+    """The weights of the formula fit, none when no n-gram occurs in min_df texts."""
+    if not presence.shape[1]:
+        return np.zeros(0)
+    return classifier(options, options.random_state).fit(presence, labels).coef_.ravel()
 
 
 def holder_counts(presence, columns: list[int], labels: np.ndarray) -> tuple[int, int]:
@@ -408,8 +421,12 @@ def find(texts: list[str], labels: np.ndarray, mask: Seeds | None, options: Opti
         patterns += ngrams.frames(range(options.formula_frames[0], options.formula_frames[1] + 1))
     matrix = ngrams.build(streams, patterns, options.min_df, MASK)
     present = word_presence(matrix)
+    if not set(matrix.words) - {MASK}:
+        raise NoFeatures("the texts hold no word that is not masked")
     vocabulary = characters.Subwords(options.rank_characters, options.min_df)
     rank_presence = vocabulary.fit(matrix.words, present.tocsr())
+    if not rank_presence.shape[1]:
+        raise NoFeatures(f"no subword occurs in {options.min_df} texts or more")
     seconds["features"] = time.perf_counter() - clock
 
     clock = time.perf_counter()
@@ -424,7 +441,7 @@ def find(texts: list[str], labels: np.ndarray, mask: Seeds | None, options: Opti
     seconds["rank_fit"] = time.perf_counter() - clock
 
     clock = time.perf_counter()
-    formula_weights = classifier(options, options.random_state).fit(matrix.presence, labels).coef_.ravel()
+    formula_weights = formula_weights_of(matrix.presence, labels, options)
     seconds["formula_fit"] = time.perf_counter() - clock
 
     clock = time.perf_counter()
