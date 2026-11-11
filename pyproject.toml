@@ -1,6 +1,6 @@
 [project]
 name = "wiffle"
-version = "0.1.0"
+version = "0.1.1"
 description = "The language that sets texts with a few seed phrases apart from other texts, and the texts that read like them"
 readme = "README.md"
 license = "Apache-2.0"
