@@ -1,10 +1,12 @@
 """Find formulas: classifiers trained on seed labels, their strongest n-grams merged into spans, and the texts they rank.
 
 One run fits twice. The ranking fit on subwords (character n-grams inside words) scores the texts; a word weighs as
-much as its subwords there, and joins the family of its strongest subword. The formula fit on word n-grams and
-phrase frames names the formulas.
+much as its subwords there, and joins the family of the words that share its stem. The formula fit on word n-grams
+and phrase frames names the formulas.
 """
 
+import math
+import os
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -17,7 +19,8 @@ from . import characters, ngrams
 from .labels import MASK, NUMBER, Seeds, masked_streams, tokens
 
 UNLABELLED_DROPPED_PER_LABEL = 2
-FAMILY_LETTERS = 4
+STEM_LETTERS = 5
+FAMILY_NAME_LETTERS = 4
 
 
 class NoFeatures(ValueError):
@@ -81,7 +84,7 @@ class Subword:
 
 @dataclass
 class Family:
-    """Words that share their strongest subword, or hold the subword of another family; the best word names it."""
+    """Words that share a stem in their folded spelling, or compounds on that stem; the stem names it."""
 
     subword: str
     weight: float
@@ -300,56 +303,129 @@ def words_of(matrix: ngrams.NgramMatrix, word_scores: np.ndarray, present: spars
     return words, top
 
 
-def naming_subword(columns: np.ndarray, weights: np.ndarray, long_enough: np.ndarray) -> int:
-    """The strongest of the subwords of FAMILY_LETTERS letters or more among the columns, else the strongest of all."""
-    candidates = columns[long_enough[columns]]
-    if not len(candidates):
-        candidates = columns
-    return int(candidates[np.argmax(weights[candidates])])
+def same_stem(first: str, second: str) -> bool:
+    """Whether two folded words share a prefix of STEM_LETTERS letters or more and of half the shorter word or more."""
+    shared = len(os.path.commonprefix([first, second]))
+    return shared >= max(STEM_LETTERS, math.ceil(min(len(first), len(second)) / 2))
 
 
-def families_of(words: list[Word], tokens_of_words: np.ndarray, word_subwords: sparse.csr_matrix,
-                weights: np.ndarray, names: np.ndarray, present: sparse.csc_matrix, labels: np.ndarray,
-                min_df: int) -> list[Family]:
-    """The words grouped by their naming subword, best family first.
+def compound_of(word: str, part: str, attested: set[str]) -> bool:
+    """Whether a folded word is an attested modifier, with an optional linking s, before the part."""
+    for cut in range(2, len(word) - len(part) + 1):
+        modifier = word[:cut]
+        linked = modifier.endswith("s") and modifier[:-1] in attested
+        if word.startswith(part, cut) and (modifier in attested or linked):
+            return True
+    return False
 
-    A word is named by its strongest subword of FAMILY_LETTERS letters or more, or by its strongest subword when it
-    has none of that length. Two groups merge when the best word of one holds the subword of FAMILY_LETTERS letters
-    or more that names the other. A family needs min_df labelled texts; its members come in the order of their
-    labelled texts.
-    """
-    long_enough = np.fromiter((len(name.strip()) >= FAMILY_LETTERS for name in names), dtype=bool, count=len(names))
-    strongest_of: dict[int, int] = {}
-    held: dict[int, set[int]] = {}
-    for token in map(int, tokens_of_words):
-        columns = word_subwords.indices[word_subwords.indptr[token]:word_subwords.indptr[token + 1]]
-        if len(columns):
-            strongest_of[token] = naming_subword(columns, weights, long_enough)
-            held[token] = set(columns.tolist())
-    best_of: dict[int, int] = {}
-    for token in map(int, tokens_of_words):
-        if token in strongest_of:
-            best_of.setdefault(strongest_of[token], token)
+
+def on_stem(form: str, stem: str, attested: set[str]) -> bool:
+    """Whether a folded word begins with the stem, is a compound on it, or is the part of a compound the stem is."""
+    simplex = form[:max(STEM_LETTERS, len(form) - 1)]
+    return form.startswith(stem) or compound_of(form, stem, attested) or compound_of(stem, simplex, attested)
+
+
+def by_labelled(words: list[Word]) -> list[Word]:
+    """The words, most labelled texts first, then by weight."""
+    return sorted(words, key=lambda word: (-word.labelled, -word.weight))
+
+
+def main_members(members: list[Word]) -> list[str]:
+    """The lowercased members with the stem of the best word that hold half of the labelled texts of these."""
+    best = characters.folded(max(members, key=lambda word: word.weight).word)
+    stem_members = [word for word in members if same_stem(characters.folded(word.word), best)] or members[:1]
+    total, held, chosen = sum(word.labelled for word in stem_members), 0, []
+    for word in stem_members:
+        chosen.append(word.word.lower())
+        held += word.labelled
+        if held * 2 >= total and len(chosen) >= min(2, len(stem_members)):
+            break
+    return chosen
+
+
+def family_stem(members: list[Word]) -> str:
+    """The folded common prefix of the main members of a family."""
+    return os.path.commonprefix([characters.folded(word) for word in main_members(by_labelled(members))])
+
+
+def family_name(members: list[str]) -> str:
+    """The common prefix of the main members, bare when it is the first of them, with a hyphen when it is shorter."""
+    prefix = os.path.commonprefix(members)
+    if len(prefix) < FAMILY_NAME_LETTERS:
+        return members[0]
+    return prefix if prefix == members[0] else f"{prefix}-"
+
+
+def members_by_group(tokens: list[int], groups: Groups) -> dict[int, list[int]]:
+    """The tokens by the representative of their group, in their order."""
+    members: dict[int, list[int]] = {}
+    for token in tokens:
+        members.setdefault(groups.root(token), []).append(token)
+    return members
+
+
+def stem_groups(tokens: list[int], form_of: dict[int, str]) -> Groups:
+    """Each word joined to the strongest earlier word with which it shares a stem."""
     groups = Groups()
-    for column, token in best_of.items():
-        for other in best_of.keys() & held[token]:
-            if other != column and long_enough[other]:
-                groups.join(column, other)
-    grouped: dict[int, list[tuple[Word, int]]] = {}
-    for word, token in zip(words, map(int, tokens_of_words), strict=True):
-        if token in strongest_of:
-            grouped.setdefault(groups.root(strongest_of[token]), []).append((word, token))
+    centres: list[int] = []
+    for token in tokens:
+        centre = next((centre for centre in centres if same_stem(form_of[token], form_of[centre])), None)
+        if centre is None:
+            centres.append(token)
+        else:
+            groups.join(centre, token)
+    return groups
+
+
+def join_compounds(groups: Groups, tokens: list[int], word_of: dict[int, Word], form_of: dict[int, str],
+                   attested: set[str]) -> None:
+    """Join each group whose best word is an attested modifier before the stem of another group to that group."""
+    members = members_by_group(tokens, groups)
+    stems = {root: family_stem([word_of[token] for token in group]) for root, group in members.items()}
+    for root, group in members.items():
+        best = form_of[max(group, key=lambda token: word_of[token].weight)]
+        host = next((other for other, stem in stems.items()
+                     if other != root and len(stem) >= STEM_LETTERS and compound_of(best, stem, attested)), None)
+        if host is not None:
+            groups.join(host, root)
+
+
+def anchored(groups: Groups, tokens: list[int], word_of: dict[int, Word], form_of: dict[int, str],
+             attested: set[str]) -> Groups:
+    """The groups with each member on its own that is not on the stem of its group less one letter."""
+    kept = Groups()
+    for root, group in members_by_group(tokens, groups).items():
+        stem = family_stem([word_of[token] for token in group])[:-1]
+        for token in group:
+            if len(stem) < STEM_LETTERS or on_stem(form_of[token], stem, attested):
+                kept.join(root, token)
+            else:
+                kept.root(token)
+    return kept
+
+
+def families_of(words: list[Word], tokens_of_words: np.ndarray, vocabulary: list[str], present: sparse.csc_matrix,
+                labels: np.ndarray, min_df: int) -> list[Family]:
+    """The words grouped by their stem in folded spelling, with the compounds on it, best family first."""
+    frequent = np.diff(present.indptr) >= min_df
+    attested = {characters.folded(word) for word, keep in zip(vocabulary, frequent, strict=True) if keep}
+    tokens = [int(token) for token in tokens_of_words]
+    word_of = dict(zip(tokens, words, strict=True))
+    form_of = {token: characters.folded(word.word) for token, word in word_of.items()}
+    groups = stem_groups(tokens, form_of)
+    join_compounds(groups, tokens, word_of, form_of, attested)
+    groups = anchored(groups, tokens, word_of, form_of, attested)
     families = []
-    for members in grouped.values():
+    for group in members_by_group(tokens, groups).values():
         holders = np.unique(np.concatenate([present.indices[present.indptr[token]:present.indptr[token + 1]]
-                                            for _, token in members]))
+                                            for token in group]))
         labelled = int(labels[holders].sum())
         if labelled < min_df:
             continue
-        best, best_token = max(members, key=lambda member: member[0].weight)
-        ordered = sorted((word for word, _ in members), key=lambda word: (-word.labelled, -word.weight))
-        families.append(Family(characters.spelled(names[strongest_of[best_token]]), best.weight, labelled,
-                               len(holders) - labelled, ordered))
+        members = by_labelled([word_of[token] for token in group])
+        best = max(members, key=lambda word: word.weight)
+        families.append(Family(family_name(main_members(members)), best.weight, labelled, len(holders) - labelled,
+                               members))
     families.sort(key=lambda family: -family.weight)
     return families
 
@@ -452,8 +528,7 @@ def find(texts: list[str], labels: np.ndarray, mask: Seeds | None, options: Opti
     allowed = reportable(matrix, labels, options.formula_min_labelled)
     formulas = formulas_of(matrix, np.where(allowed, formula_weights, 0.0), stability, labels, options.top)
     words, tokens_of_words = words_of(matrix, word_scores, present, labels, options.words, options.min_df)
-    families = families_of(words, tokens_of_words, word_subwords, rank_weights, vocabulary.names, present, labels,
-                           options.min_df)
+    families = families_of(words, tokens_of_words, matrix.words, present, labels, options.min_df)
     word_labelled = np.asarray(present.T @ labels.astype(np.float32)).ravel()
     subwords = subwords_of(rank_weights, vocabulary.names, rank_presence, word_subwords, matrix.words, word_labelled,
                            labels, options.subwords)

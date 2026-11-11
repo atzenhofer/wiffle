@@ -78,13 +78,35 @@ def test_reportable_needs_labelled_support_and_words_beyond_numbers():
     assert not allowed["ex una parte"]
 
 
-def test_naming_subword_prefers_four_letters_or_more():
-    from wiffle.find import naming_subword
-    columns = np.array([0, 1, 2])
-    weights = np.array([0.9, 0.5, 0.2])
-    long_enough = np.array([False, True, True])
-    assert naming_subword(columns, weights, long_enough) == 1
-    assert naming_subword(np.array([0]), weights, long_enough) == 0
+def test_a_stem_is_a_long_shared_prefix_of_the_folded_spellings():
+    from wiffle.characters import folded
+    from wiffle.find import same_stem
+    assert folded("Conpositores") == folded("compositores") and folded("spruchlewt") == folded("spruchleut")
+    assert same_stem(folded("arbitrium"), folded("arbitrando"))
+    assert same_stem(folded("arbitrium"), folded("arbiter"))
+    assert not same_stem(folded("concordiam"), folded("concessa"))
+    assert not same_stem(folded("transkription"), folded("tractatus"))
+
+
+def test_a_compound_needs_a_modifier_found_in_the_texts():
+    from wiffle.find import compound_of
+    attested = {"zu", "rechts", "recht"}
+    assert compound_of("zuspruch", "spruch", attested)
+    assert compound_of("rechtsspruch", "spruch", attested)
+    assert not compound_of("waarbii", "arbi", attested)
+
+
+def test_families_join_the_forms_and_compounds_of_a_stem_and_nothing_else():
+    from scipy import sparse
+    from wiffle.find import Word, families_of
+    vocabulary = ["arbitrium", "arbitros", "waarbij", "spruch", "zuspruch", "zu", "tamquam"]
+    words = [Word(word, 1.0 - position / 10, 3, 0) for position, word in enumerate(vocabulary) if word != "zu"]
+    tokens = np.array([vocabulary.index(word.word) for word in words])
+    present = sparse.csc_matrix(np.ones((4, len(vocabulary)), dtype=np.float32))
+    families = families_of(words, tokens, vocabulary, present, np.array([True] * 3 + [False]), 3)
+    assert {family.subword: [word.word for word in family.members] for family in families} == {
+        "arbitr-": ["arbitrium", "arbitros"], "waarbij": ["waarbij"], "spruch": ["spruch", "zuspruch"],
+        "tamquam": ["tamquam"]}
 
 
 def test_a_fit_without_ngrams_names_no_formula_and_still_ranks():

@@ -80,11 +80,13 @@ one, `-eili-` is inside one. `labelled` and `others` count the labelled texts an
 - `labelled`, `others`: the texts that contain an n-gram of the group.
 - `members`: the n-grams of the group, strongest first.
 
-`words.tsv` holds word families: the 300 strongest words of the ranking fit, grouped by their strongest subword of
-four letters or more. Two families merge when the best word of one holds the subword that names the other. A
-family needs `--min-df` labelled texts. The families are candidates for new seeds.
+`words.tsv` holds word families: the 300 strongest words of the ranking fit, grouped by a shared stem. Spellings are
+folded first (u and v, i, j and y, ae and oe, ci and ti, np and mp, tz and z, doubled letters, accents), and two
+words share a stem when they share a prefix of five letters or more and of half the shorter word or more. A compound
+whose modifier is a word of the texts joins the family of its stem, as zuspruch joins spruch. A family needs
+`--min-df` labelled texts. The families are candidates for new seeds.
 
-- `rank`, `family`: the subword that names the family.
+- `rank`, `family`: the stem that names the family, with a hyphen where it is no word of the family.
 - `weight`: the weight of the best word of the family.
 - `labelled`, `others`: the texts that contain a word of the family.
 - `words`: the words with their counts as `labelled/others`, most labelled texts first.

@@ -11,6 +11,8 @@
 
 ### Fixed
 
+- `words.tsv` groups a word family by a shared stem in folded spelling, with the compounds on it, so words that
+  share only an inner subword, such as waarbij and arbitrium, are no longer one family.
 - `wiffle find` on platforms with 32-bit array indices, WebAssembly among them, where it stopped with a TypeError
   in `numpy.repeat`.
 - A run in which no n-gram occurs in `--min-df` texts no longer stops with a ValueError: it names no formulas and

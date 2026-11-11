@@ -4,6 +4,9 @@ The subwords of a text are the subwords of its distinct words, so they are compu
 the texts by a sparse product.
 """
 
+import re
+import unicodedata
+
 import numpy as np
 from scipy import sparse
 from sklearn.feature_extraction.text import CountVectorizer
@@ -22,6 +25,19 @@ def texts_by_words(streams: list[list[str]]) -> tuple[list[str], sparse.csr_matr
     presence = sparse.csr_matrix((np.ones(len(rows), dtype=np.float32), (rows, columns)),
                                  shape=(len(streams), len(vocabulary)))
     return list(vocabulary), presence
+
+
+def folded(word: str) -> str:
+    """A word lowercased and folded: sharp s, accents, u/v, i/j/y, w after a vowel, ae/oe, doubles, np, tz/cz, ci/ti."""
+    text = unicodedata.normalize("NFKD", word.lower().replace("ß", "ss"))
+    text = "".join(letter for letter in text if not unicodedata.combining(letter))
+    text = text.translate(str.maketrans("jyv", "iiu"))
+    text = re.sub(r"(?<=[aeiou])w", "u", text)
+    text = text.replace("ae", "e").replace("oe", "e")
+    text = re.sub(r"(.)\1+", r"\1", text)
+    text = re.sub(r"n(?=[pb])", "m", text)
+    text = re.sub(r"[tc]z", "z", text)
+    return re.sub(r"ci(?=[aeiou])", "ti", text)
 
 
 def binary(matrix: sparse.spmatrix) -> sparse.csr_matrix:
